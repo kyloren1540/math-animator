@@ -17,7 +17,7 @@ La app web usa **Streamlit** y se puede publicar gratis en [Streamlit Community 
    git add .
    git commit -m "Math Animator: app web y escritorio"
    git branch -M main
-   git remote add origin https://github.com/Kyloren1540/math-animator.git
+   git remote add origin https://github.com/kyloren1540/math-animator.git
    git push -u origin main
    ```
 
