@@ -1,0 +1,5 @@
+# Dependencias para la versión web (Streamlit Cloud)
+matplotlib>=3.8.0
+numpy>=1.26.0
+sympy>=1.12
+streamlit>=1.32.0
