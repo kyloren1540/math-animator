@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 
+from functions.variables import independent_var_to_latex, normalize_independent_var
+
 
 @dataclass
 class FunctionMeta:
@@ -18,6 +20,7 @@ class FunctionMeta:
     color: str = "#58a6ff"
     params: dict[str, float] = field(default_factory=dict)
     visible: bool = True
+    independent_var: str = "x"
 
 
 class MathFunction(ABC):
@@ -27,15 +30,22 @@ class MathFunction(ABC):
     DISPLAY_NAME: str = "Función"
     PARAM_SPECS: list[tuple[str, str, float]] = []  # (key, label, default)
 
-    def __init__(self, params: dict[str, float] | None = None, color: str | None = None):
+    def __init__(
+        self,
+        params: dict[str, float] | None = None,
+        color: str | None = None,
+        independent_var: str | None = None,
+    ):
         self._params = self._default_params()
         if params:
             self._params.update(params)
+        self.independent_var = normalize_independent_var(independent_var or "x")
         self.meta = FunctionMeta(
             name=self.formula_text(),
             type_id=self.TYPE_ID,
             color=color or self._next_color(),
             params=dict(self._params),
+            independent_var=self.independent_var,
         )
 
     @classmethod
@@ -51,6 +61,20 @@ class MathFunction(ABC):
     @property
     def params(self) -> dict[str, float]:
         return self._params
+
+    @property
+    def v(self) -> str:
+        """Symbol of the independent variable (e.g. x, t)."""
+        return self.independent_var
+
+    @property
+    def v_latex(self) -> str:
+        return independent_var_to_latex(self.independent_var)
+
+    def set_independent_var(self, var: str) -> None:
+        self.independent_var = normalize_independent_var(var)
+        self.meta.independent_var = self.independent_var
+        self.meta.name = self.formula_text()
 
     def set_param(self, key: str, value: float) -> None:
         self._params[key] = float(value)
@@ -80,7 +104,6 @@ class MathFunction(ABC):
     def y_values(self, x: np.ndarray) -> np.ndarray:
         y = self.evaluate(x)
         y = np.asarray(y, dtype=float)
-        # Mask invalid values for plotting
         y[~np.isfinite(y)] = np.nan
         return y
 
@@ -102,16 +125,17 @@ class MathFunction(ABC):
         return None
 
     def special_points(self) -> list[tuple[float, float, str]]:
-        """Annotated points: (x, y, label)."""
+        """Annotated points: (indep, dep, label)."""
         points: list[tuple[float, float, str]] = []
+        iv = self.v
         for r in self.roots():
             if np.isfinite(r):
                 y = float(self.evaluate(np.array([r]))[0])
                 if np.isfinite(y):
-                    points.append((r, y, f"raíz ({r:.3g}, {y:.3g})"))
-        v = self.vertex()
-        if v is not None:
-            points.append((v[0], v[1], f"vértice ({v[0]:.3g}, {v[1]:.3g})"))
+                    points.append((r, y, f"raíz ({iv}={r:.3g}, {y:.3g})"))
+        vtx = self.vertex()
+        if vtx is not None:
+            points.append((vtx[0], vtx[1], f"vértice ({iv}={vtx[0]:.3g}, {y:.3g})"))
         return points
 
     def to_dict(self) -> dict[str, Any]:
@@ -120,6 +144,7 @@ class MathFunction(ABC):
             "params": self._params,
             "color": self.meta.color,
             "visible": self.meta.visible,
+            "independent_var": self.independent_var,
         }
 
     @classmethod
@@ -130,4 +155,5 @@ class MathFunction(ABC):
             data["type_id"],
             data.get("params"),
             data.get("color"),
+            data.get("independent_var"),
         )

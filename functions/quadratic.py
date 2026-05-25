@@ -23,11 +23,13 @@ class QuadraticFunction(MathFunction):
 
     def formula_text(self) -> str:
         a, b, c = self._params["a"], self._params["b"], self._params["c"]
-        return f"f(x) = {a:g}x² + {b:g}x + {c:g}"
+        v = self.v
+        return f"f({v}) = {a:g}{v}² + {b:g}{v} + {c:g}"
 
     def formula_latex(self) -> str:
         a, b, c = self._params["a"], self._params["b"], self._params["c"]
-        return rf"f(x) = {a:g}x^2 + {b:g}x + {c:g}"
+        v = self.v_latex
+        return rf"f({v}) = {a:g}{v}^2 + {b:g}{v} + {c:g}"
 
     def vertex(self) -> tuple[float, float] | None:
         a = self._params["a"]
@@ -42,8 +44,8 @@ class QuadraticFunction(MathFunction):
         a, b, c = self._params["a"], self._params["b"], self._params["c"]
         if abs(a) < 1e-12:
             return []
-        x = sp.Symbol("x")
-        sols = sp.solve(a * x**2 + b * x + c, x)
+        sym = sp.Symbol(self.v)
+        sols = sp.solve(a * sym**2 + b * sym + c, sym)
         return [float(sp.re(s)) for s in sols if s.is_real]
 
     def range_description(self, x_min: float = -10.0, x_max: float = 10.0) -> str:

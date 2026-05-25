@@ -28,6 +28,7 @@ def import_functions(path: str | Path) -> list[MathFunction]:
             item["type_id"],
             item.get("params"),
             item.get("color"),
+            item.get("independent_var"),
         )
         fn.meta.visible = item.get("visible", True)
         result.append(fn)

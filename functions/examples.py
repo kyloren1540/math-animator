@@ -20,6 +20,7 @@ class FunctionSpec:
     type_id: str
     params: dict[str, float] | None = None
     color: str | None = None
+    independent_var: str | None = None
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class ExamplePreset:
     title: str
     description: str
     functions: tuple[FunctionSpec, ...]
+    default_independent_var: str = "x"
 
 
 EXAMPLES: tuple[ExamplePreset, ...] = (
@@ -122,6 +124,15 @@ EXAMPLES: tuple[ExamplePreset, ...] = (
             FunctionSpec("sine", {"amplitude": 1.5, "frequency": 1}, COLOR_BLUE),
         ),
     ),
+    ExamplePreset(
+        id="tiempo",
+        title="Seno en el tiempo",
+        description="f(t) = sin(t): variable independiente t (tiempo).",
+        default_independent_var="t",
+        functions=(
+            FunctionSpec("sine", {"amplitude": 1, "frequency": 1}, COLOR_BLUE),
+        ),
+    ),
 )
 
 _EXAMPLES_BY_ID = {ex.id: ex for ex in EXAMPLES}
@@ -141,6 +152,11 @@ def create_functions_from_example(example_id: str) -> list[MathFunction]:
     if preset is None:
         raise ValueError(f"Ejemplo desconocido: {example_id}")
     return [
-        create_function(spec.type_id, spec.params, spec.color)
+        create_function(
+            spec.type_id,
+            spec.params,
+            spec.color,
+            spec.independent_var or preset.default_independent_var,
+        )
         for spec in preset.functions
     ]

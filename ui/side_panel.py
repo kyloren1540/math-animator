@@ -10,16 +10,19 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPushButton,
     QScrollArea,
     QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from functions.examples import example_choices, get_example
 from functions.factory import function_choices
+from functions.variables import INDEPENDENT_VAR_PRESETS, normalize_independent_var
 from ui.parameter_inputs import ParameterPanel
 
 
@@ -40,9 +43,12 @@ class SidePanel(QWidget):
     import_json_clicked = pyqtSignal()
     history_selected = pyqtSignal(int)
     glow_toggled = pyqtSignal(bool)
+    curve_points_toggled = pyqtSignal(bool)
     speed_changed = pyqtSignal(float)
     live_update_toggled = pyqtSignal(bool)
     example_load_clicked = pyqtSignal(str)
+    indep_var_changed = pyqtSignal(str)
+    table_steps_changed = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -83,6 +89,25 @@ class SidePanel(QWidget):
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         type_layout.addWidget(self.type_combo)
         layout.addWidget(type_group)
+
+        # Independent variable
+        indep_group = QGroupBox("Variable independiente")
+        indep_layout = QVBoxLayout(indep_group)
+        self.indep_combo = QComboBox()
+        self.indep_combo.setToolTip(
+            "Símbolo del eje horizontal (x, t, θ, u, …)"
+        )
+        for label, value in INDEPENDENT_VAR_PRESETS:
+            self.indep_combo.addItem(label, value)
+        self.indep_combo.currentIndexChanged.connect(self._on_indep_preset_changed)
+        self.indep_custom = QLineEdit()
+        self.indep_custom.setPlaceholderText("Otra (máx. 8 caracteres)")
+        self.indep_custom.setMaxLength(8)
+        self.indep_custom.setVisible(False)
+        self.indep_custom.textChanged.connect(self._on_indep_custom_changed)
+        indep_layout.addWidget(self.indep_combo)
+        indep_layout.addWidget(self.indep_custom)
+        layout.addWidget(indep_group)
 
         # Examples
         examples_group = QGroupBox("Ejemplos")
@@ -181,9 +206,30 @@ class SidePanel(QWidget):
         self.glow_check = QCheckBox("Efecto glow")
         self.glow_check.setToolTip("Resplandor suave en las curvas")
         self.glow_check.toggled.connect(self.glow_toggled.emit)
+        self.curve_points_check = QCheckBox("Marcar puntos en la curva")
+        self.curve_points_check.setChecked(True)
+        self.curve_points_check.setToolTip(
+            "Muestra puntos sobre la línea; en animación resalta el avance"
+        )
+        self.curve_points_check.toggled.connect(self.curve_points_toggled.emit)
         anim_layout.addWidget(self.live_check)
         anim_layout.addWidget(self.glow_check)
+        anim_layout.addWidget(self.curve_points_check)
         layout.addWidget(anim_group)
+
+        # Value table
+        table_group = QGroupBox("Tabla de valores")
+        table_layout = QVBoxLayout(table_group)
+        steps_row = QHBoxLayout()
+        steps_row.addWidget(QLabel("Puntos:"))
+        self.table_steps_spin = QSpinBox()
+        self.table_steps_spin.setRange(5, 31)
+        self.table_steps_spin.setValue(11)
+        self.table_steps_spin.setToolTip("Cantidad de filas en la tabla (incluye extremos)")
+        self.table_steps_spin.valueChanged.connect(self.table_steps_changed.emit)
+        steps_row.addWidget(self.table_steps_spin)
+        table_layout.addLayout(steps_row)
+        layout.addWidget(table_group)
 
         # Export
         export_group = QGroupBox("Exportar")
@@ -227,6 +273,43 @@ class SidePanel(QWidget):
 
     def get_params(self) -> dict[str, float]:
         return self.param_panel.get_params()
+
+    def table_steps(self) -> int:
+        return self.table_steps_spin.value()
+
+    def get_independent_var(self) -> str:
+        if self.indep_combo.currentData() == "__custom__":
+            return normalize_independent_var(self.indep_custom.text())
+        return normalize_independent_var(self.indep_combo.currentData() or "x")
+
+    def load_independent_var(self, var: str) -> None:
+        var = normalize_independent_var(var)
+        self.indep_combo.blockSignals(True)
+        self.indep_custom.blockSignals(True)
+        for i in range(self.indep_combo.count()):
+            if self.indep_combo.itemData(i) == var:
+                self.indep_combo.setCurrentIndex(i)
+                self.indep_custom.setVisible(False)
+                self.indep_combo.blockSignals(False)
+                self.indep_custom.blockSignals(False)
+                return
+        for i in range(self.indep_combo.count()):
+            if self.indep_combo.itemData(i) == "__custom__":
+                self.indep_combo.setCurrentIndex(i)
+                break
+        self.indep_custom.setText(var)
+        self.indep_custom.setVisible(True)
+        self.indep_combo.blockSignals(False)
+        self.indep_custom.blockSignals(False)
+
+    def _on_indep_preset_changed(self) -> None:
+        is_custom = self.indep_combo.currentData() == "__custom__"
+        self.indep_custom.setVisible(is_custom)
+        self.indep_var_changed.emit(self.get_independent_var())
+
+    def _on_indep_custom_changed(self, _text: str) -> None:
+        if self.indep_combo.currentData() == "__custom__":
+            self.indep_var_changed.emit(self.get_independent_var())
 
     def _on_type_changed(self) -> None:
         type_id = self.type_combo.currentData()

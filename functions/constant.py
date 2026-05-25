@@ -16,10 +16,12 @@ class ConstantFunction(MathFunction):
         return np.full_like(x, self._params["c"], dtype=float)
 
     def formula_text(self) -> str:
-        return f"f(x) = {self._params['c']:g}"
+        v = self.v
+        return f"f({v}) = {self._params['c']:g}"
 
     def formula_latex(self) -> str:
-        return rf"f(x) = {self._params['c']:g}"
+        v = self.v_latex
+        return rf"f({v}) = {self._params['c']:g}"
 
     def range_description(self, x_min: float = -10.0, x_max: float = 10.0) -> str:
         return f"{{ {self._params['c']:g} }}"

@@ -22,11 +22,13 @@ class SineFunction(MathFunction):
 
     def formula_text(self) -> str:
         a, w = self._params["amplitude"], self._params["frequency"]
-        return f"f(x) = {a:g}·sin({w:g}x)"
+        v = self.v
+        return f"f({v}) = {a:g}·sin({w:g}{v})"
 
     def formula_latex(self) -> str:
         a, w = self._params["amplitude"], self._params["frequency"]
-        return rf"f(x) = {a:g}\sin({w:g}x)"
+        v = self.v_latex
+        return rf"f({v}) = {a:g}\sin({w:g}{v})"
 
     def range_description(self, x_min: float = -10.0, x_max: float = 10.0) -> str:
         a = abs(self._params["amplitude"])
@@ -48,11 +50,13 @@ class CosineFunction(MathFunction):
 
     def formula_text(self) -> str:
         a, w = self._params["amplitude"], self._params["frequency"]
-        return f"f(x) = {a:g}·cos({w:g}x)"
+        v = self.v
+        return f"f({v}) = {a:g}·cos({w:g}{v})"
 
     def formula_latex(self) -> str:
         a, w = self._params["amplitude"], self._params["frequency"]
-        return rf"f(x) = {a:g}\cos({w:g}x)"
+        v = self.v_latex
+        return rf"f({v}) = {a:g}\cos({w:g}{v})"
 
     def range_description(self, x_min: float = -10.0, x_max: float = 10.0) -> str:
         a = abs(self._params["amplitude"])
@@ -74,11 +78,13 @@ class TangentFunction(MathFunction):
 
     def formula_text(self) -> str:
         a, w = self._params["amplitude"], self._params["frequency"]
-        return f"f(x) = {a:g}·tan({w:g}x)"
+        v = self.v
+        return f"f({v}) = {a:g}·tan({w:g}{v})"
 
     def formula_latex(self) -> str:
         a, w = self._params["amplitude"], self._params["frequency"]
-        return rf"f(x) = {a:g}\tan({w:g}x)"
+        v = self.v_latex
+        return rf"f({v}) = {a:g}\tan({w:g}{v})"
 
     def range_description(self, x_min: float = -10.0, x_max: float = 10.0) -> str:
         return "ℝ (asíntotas verticales)"

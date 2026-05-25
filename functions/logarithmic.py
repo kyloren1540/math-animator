@@ -20,10 +20,12 @@ class LogarithmicFunction(MathFunction):
         return y
 
     def formula_text(self) -> str:
-        return "f(x) = ln(x)"
+        v = self.v
+        return f"f({v}) = ln({v})"
 
     def formula_latex(self) -> str:
-        return r"f(x) = \ln(x)"
+        v = self.v_latex
+        return rf"f({v}) = \ln({v})"
 
     def domain_description(self) -> str:
         return "(0, +∞)"

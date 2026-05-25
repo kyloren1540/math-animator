@@ -16,10 +16,12 @@ class AbsoluteFunction(MathFunction):
         return np.abs(x)
 
     def formula_text(self) -> str:
-        return "f(x) = |x|"
+        v = self.v
+        return f"f({v}) = |{v}|"
 
     def formula_latex(self) -> str:
-        return r"f(x) = |x|"
+        v = self.v_latex
+        return rf"f({v}) = |{v}|"
 
     def range_description(self, x_min: float = -10.0, x_max: float = 10.0) -> str:
         return "[0, +∞)"

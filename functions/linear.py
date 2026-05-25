@@ -21,12 +21,14 @@ class LinearFunction(MathFunction):
 
     def formula_text(self) -> str:
         m, b = self._params["m"], self._params["b"]
-        return f"f(x) = {m:g}x + {b:g}"
+        v = self.v
+        return f"f({v}) = {m:g}{v} + {b:g}"
 
     def formula_latex(self) -> str:
         m, b = self._params["m"], self._params["b"]
+        v = self.v_latex
         sign = "+" if b >= 0 else ""
-        return rf"f(x) = {m:g}x {sign}{b:g}"
+        return rf"f({v}) = {m:g}{v} {sign}{b:g}"
 
     def roots(self) -> list[float]:
         m = self._params["m"]

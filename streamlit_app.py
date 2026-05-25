@@ -19,8 +19,10 @@ from functions.examples import (
     get_example,
 )
 from functions.factory import FUNCTION_REGISTRY, create_function, function_choices
+from functions.variables import INDEPENDENT_VAR_PRESETS, normalize_independent_var
 from graph.renderer import GraphRenderer
 from utils.math_helpers import format_roots, intersections_text
+from utils.value_table import build_value_table, table_to_csv
 
 st.set_page_config(
     page_title="Math Animator",
@@ -51,10 +53,12 @@ def _render_figure(
     *,
     glow: bool = False,
     progress: float | None = None,
+    show_curve_points: bool = True,
 ) -> Figure:
     fig = Figure(figsize=(10, 5.5), dpi=110)
     ax = fig.add_subplot(111)
     renderer = GraphRenderer(fig, ax, glow=glow)
+    renderer.show_curve_points = show_curve_points
     if progress is None:
         renderer.draw_full(functions)
     else:
@@ -64,6 +68,7 @@ def _render_figure(
 
 def _show_info(fn: MathFunction, all_funcs: list[MathFunction]) -> None:
     st.markdown(f"**{fn.formula_text()}**")
+    st.caption(f"Variable independiente: **{fn.independent_var}**")
     c1, c2 = st.columns(2)
     c1.caption(f"Dominio: {fn.domain_description()}")
     c2.caption(f"Rango: {fn.range_description()}")
@@ -77,7 +82,7 @@ def _show_info(fn: MathFunction, all_funcs: list[MathFunction]) -> None:
         )
 
 
-def _sidebar() -> tuple[bool, float | None]:
+def _sidebar() -> tuple[bool, float | None, int]:
     st.sidebar.title("📐 Math Animator")
     st.sidebar.caption("Visualizador de funciones — enlace público")
 
@@ -101,6 +106,22 @@ def _sidebar() -> tuple[bool, float | None]:
 
     # New function
     st.sidebar.subheader("Nueva función")
+    indep_labels = [label for label, _ in INDEPENDENT_VAR_PRESETS]
+    indep_values = [val for _, val in INDEPENDENT_VAR_PRESETS]
+    indep_choice = st.sidebar.selectbox(
+        "Variable independiente",
+        options=indep_labels,
+        index=0,
+        help="Símbolo del eje horizontal: x, t, θ, u, …",
+    )
+    indep_val = indep_values[indep_labels.index(indep_choice)]
+    if indep_val == "__custom__":
+        indep_var = normalize_independent_var(
+            st.sidebar.text_input("Nombre de la variable", value="x", max_chars=8)
+        )
+    else:
+        indep_var = normalize_independent_var(indep_val)
+
     type_map = {tid: name for tid, name in function_choices()}
     type_id = st.sidebar.selectbox(
         "Tipo",
@@ -113,7 +134,9 @@ def _sidebar() -> tuple[bool, float | None]:
         params[key] = st.sidebar.number_input(label, value=float(default), key=f"p_{type_id}_{key}")
 
     if st.sidebar.button("➕ Añadir al gráfico", use_container_width=True):
-        st.session_state.functions.append(create_function(type_id, params))
+        st.session_state.functions.append(
+            create_function(type_id, params, independent_var=indep_var)
+        )
         st.rerun()
 
     if st.session_state.functions and st.sidebar.button(
@@ -123,18 +146,47 @@ def _sidebar() -> tuple[bool, float | None]:
         st.rerun()
 
     st.sidebar.divider()
+    table_steps = st.sidebar.slider(
+        "Puntos en tabla de valores",
+        min_value=5,
+        max_value=31,
+        value=11,
+        step=2,
+    )
     glow = st.sidebar.checkbox("Efecto glow", value=False)
+    show_curve_points = st.sidebar.checkbox(
+        "Marcar puntos en la curva",
+        value=True,
+        help="Puntos sobre la línea; en animación se resalta el avance",
+    )
     animate = st.sidebar.checkbox("Modo animación", value=False)
     progress: float | None = None
     if animate and st.session_state.functions:
         progress = st.sidebar.slider("Progreso", 0.0, 1.0, 1.0, 0.02)
 
-    return glow, progress
+    return glow, progress, table_steps, show_curve_points
+
+
+def _show_value_table(functions: list[MathFunction], steps: int) -> None:
+    if not functions:
+        return
+    headers, rows = build_value_table(functions, -10.0, 10.0, steps)
+    import pandas as pd
+
+    df = pd.DataFrame(rows, columns=headers)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "Descargar tabla CSV",
+        data=table_to_csv(headers, rows),
+        file_name="tabla_valores.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 
 
 def main() -> None:
     _init_state()
-    glow, progress = _sidebar()
+    glow, progress, table_steps, show_curve_points = _sidebar()
 
     st.title("Math Animator")
     st.caption("Grafica funciones, compara curvas y explora los ejemplos.")
@@ -146,9 +198,11 @@ def main() -> None:
             "Elige un **ejemplo** en la barra lateral o **añade una función** para empezar."
         )
         demo = create_functions_from_example("seno_coseno")
-        fig = _render_figure(demo, glow=glow)
+        fig = _render_figure(demo, glow=glow, show_curve_points=show_curve_points)
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
+        st.subheader("Tabla de valores (vista previa)")
+        _show_value_table(demo, table_steps)
         return
 
     col_plot, col_info = st.columns([2.2, 1])
@@ -158,6 +212,7 @@ def main() -> None:
             functions,
             glow=glow,
             progress=progress if progress is not None and progress < 1.0 else None,
+            show_curve_points=show_curve_points,
         )
         st.pyplot(fig, use_container_width=True)
         buf = io.BytesIO()
@@ -171,6 +226,9 @@ def main() -> None:
             mime="image/png",
             use_container_width=True,
         )
+
+    st.subheader("Tabla de valores")
+    _show_value_table(functions, table_steps)
 
     with col_info:
         st.subheader("Funciones activas")

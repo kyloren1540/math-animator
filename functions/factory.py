@@ -59,8 +59,9 @@ def create_function(
     type_id: str,
     params: dict[str, float] | None = None,
     color: str | None = None,
+    independent_var: str | None = None,
 ) -> MathFunction:
     cls = FUNCTION_REGISTRY.get(type_id)
     if cls is None:
         raise ValueError(f"Tipo de función desconocido: {type_id}")
-    return cls(params=params, color=color)
+    return cls(params=params, color=color, independent_var=independent_var)

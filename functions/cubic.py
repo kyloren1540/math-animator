@@ -34,7 +34,8 @@ class CubicFunction(MathFunction):
             self._params["c"],
             self._params["d"],
         )
-        return f"f(x) = {a:g}x³ + {b:g}x² + {c:g}x + {d:g}"
+        v = self.v
+        return f"f({v}) = {a:g}{v}³ + {b:g}{v}² + {c:g}{v} + {d:g}"
 
     def formula_latex(self) -> str:
         a, b, c, d = (
@@ -43,7 +44,8 @@ class CubicFunction(MathFunction):
             self._params["c"],
             self._params["d"],
         )
-        return rf"f(x) = {a:g}x^3 + {b:g}x^2 + {c:g}x + {d:g}"
+        v = self.v_latex
+        return rf"f({v}) = {a:g}{v}^3 + {b:g}{v}^2 + {c:g}{v} + {d:g}"
 
     def roots(self) -> list[float]:
         a, b, c, d = (
@@ -52,6 +54,6 @@ class CubicFunction(MathFunction):
             self._params["c"],
             self._params["d"],
         )
-        x = sp.Symbol("x")
-        sols = sp.solve(a * x**3 + b * x**2 + c * x + d, x)
+        sym = sp.Symbol(self.v)
+        sols = sp.solve(a * sym**3 + b * sym**2 + c * sym + d, sym)
         return [float(sp.re(s)) for s in sols if s.is_real]

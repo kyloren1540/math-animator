@@ -19,10 +19,12 @@ class ExponentialFunction(MathFunction):
         return np.power(a, x)
 
     def formula_text(self) -> str:
-        return f"f(x) = {self._params['a']:g}^x"
+        v = self.v
+        return f"f({v}) = {self._params['a']:g}^{v}"
 
     def formula_latex(self) -> str:
-        return rf"f(x) = {self._params['a']:g}^{{x}}"
+        v = self.v_latex
+        return rf"f({v}) = {self._params['a']:g}^{{{v}}}"
 
     def domain_description(self) -> str:
         return "ℝ"

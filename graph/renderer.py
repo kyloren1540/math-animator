@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from matplotlib.axes import Axes
+from matplotlib.collections import PathCollection
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
@@ -28,14 +29,20 @@ class GraphRenderer:
     LINE_WIDTH = 2.0
     GLOW_WIDTH = 5.0
     GLOW_ALPHA = 0.18
+    MARKER_SIZE = 28
+    HEAD_MARKER_SIZE = 90
+    MAX_CURVE_MARKERS = 24
 
     def __init__(self, figure: Figure, axes: Axes, glow: bool = False):
         self.figure = figure
         self.ax = axes
         self.glow = glow
+        self.show_curve_points = True
         self._lines: dict[int, Line2D] = {}
         self._glow_lines: dict[int, Line2D] = {}
         self._point_artists: list = []
+        self._curve_scatters: dict[int, PathCollection] = {}
+        self._head_markers: dict[int, Line2D] = {}
         self._origin_lines: list[Line2D] = []
         self.x_min = -10.0
         self.x_max = 10.0
@@ -45,7 +52,7 @@ class GraphRenderer:
         self.figure.patch.set_facecolor(BG_FIGURE)
         self.ax.set_facecolor(BG_AXES)
         self.ax.set_xlabel("x", color=TEXT_MUTED, fontsize=10, labelpad=6)
-        self.ax.set_ylabel("y", color=TEXT_MUTED, fontsize=10, labelpad=6)
+        self.ax.set_ylabel("f(x)", color=TEXT_MUTED, fontsize=10, labelpad=6)
         self.ax.tick_params(
             colors=TEXT_MUTED, labelsize=9, length=4, width=0.8, pad=4
         )
@@ -90,16 +97,53 @@ class GraphRenderer:
                 )
             )
 
+    def _update_axis_labels(self, functions: list[MathFunction]) -> None:
+        if not functions:
+            self.ax.set_xlabel("x", color=TEXT_MUTED)
+            self.ax.set_ylabel("f(x)", color=TEXT_MUTED)
+            return
+        iv = functions[0].independent_var
+        for fn in functions[1:]:
+            if fn.independent_var != iv:
+                iv = f"{functions[0].independent_var}…"
+                break
+        iv_label = functions[0].independent_var if "…" not in iv else "x"
+        self.ax.set_xlabel(iv_label, color=TEXT_MUTED, fontsize=10, labelpad=6)
+        self.ax.set_ylabel(f"f({iv_label})", color=TEXT_MUTED, fontsize=10, labelpad=6)
+
     def set_xlim(self, x_min: float, x_max: float) -> None:
         self.x_min, self.x_max = x_min, x_max
         self.ax.set_xlim(x_min, x_max)
 
     def clear(self) -> None:
+        self._clear_curve_markers()
         self.ax.clear()
         self._apply_style()
         self._lines.clear()
         self._glow_lines.clear()
         self._point_artists.clear()
+        self._curve_scatters.clear()
+        self._head_markers.clear()
+
+    @staticmethod
+    def _safe_remove_artist(artist) -> None:
+        try:
+            if artist.axes is not None:
+                artist.remove()
+        except (NotImplementedError, ValueError):
+            pass
+
+    def _remove_curve_markers_for(self, index: int) -> None:
+        if index in self._curve_scatters:
+            self._safe_remove_artist(self._curve_scatters[index])
+            del self._curve_scatters[index]
+        if index in self._head_markers:
+            self._safe_remove_artist(self._head_markers[index])
+            del self._head_markers[index]
+
+    def _clear_curve_markers(self) -> None:
+        for index in list(self._curve_scatters.keys()):
+            self._remove_curve_markers_for(index)
 
     def _x_array(self, n: int = 2000) -> np.ndarray:
         return np.linspace(self.x_min, self.x_max, n)
@@ -160,6 +204,50 @@ class GraphRenderer:
         )
         leg.get_frame().set_linewidth(0.6)
 
+    def _mark_curve_points(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        color: str,
+        index: int,
+        *,
+        highlight_head: bool = False,
+    ) -> None:
+        """Dots along the drawn line; optional head marks animation tip."""
+        self._remove_curve_markers_for(index)
+
+        y = np.asarray(y, dtype=float)
+        mask = np.isfinite(y)
+        xi, yi = x[mask], y[mask]
+        if xi.size < 1:
+            return
+
+        step = max(1, int(np.ceil(xi.size / self.MAX_CURVE_MARKERS)))
+        scatter = self.ax.scatter(
+            xi[::step],
+            yi[::step],
+            c=color,
+            s=self.MARKER_SIZE,
+            alpha=0.85,
+            edgecolors=BG_AXES,
+            linewidths=0.8,
+            zorder=3,
+        )
+        self._curve_scatters[index] = scatter
+
+        if highlight_head and xi.size > 0:
+            head = self.ax.plot(
+                xi[-1],
+                yi[-1],
+                "o",
+                color=color,
+                markersize=9,
+                markeredgecolor="#ffffff",
+                markeredgewidth=1.5,
+                zorder=5,
+            )[0]
+            self._head_markers[index] = head
+
     def _mark_special_points(self, fn: MathFunction, color: str) -> None:
         for px, py, lbl in fn.special_points():
             pt = self.ax.plot(
@@ -202,12 +290,15 @@ class GraphRenderer:
                 continue
             y = fn.y_values(x)
             self._plot_curve(x, y, fn.meta.color, fn.formula_text(), i)
+            if self.show_curve_points:
+                self._mark_curve_points(x, y, fn.meta.color, i)
             if show_points:
                 self._mark_special_points(fn, fn.meta.color)
 
         if show_legend and functions:
             self._style_legend()
         self._autoscale_y(functions, x)
+        self._update_axis_labels(functions)
         self._draw_origin_axes()
         self.figure.subplots_adjust(left=0.09, right=0.97, top=0.97, bottom=0.11)
 
@@ -243,12 +334,18 @@ class GraphRenderer:
             else:
                 self._plot_curve(x, y, color, label, i)
 
+            if self.show_curve_points:
+                self._mark_curve_points(
+                    x, y, color, i, highlight_head=progress < 1.0
+                )
+
         if show_legend and functions:
             handles, labels = self.ax.get_legend_handles_labels()
             if labels:
                 self._style_legend()
 
         self._autoscale_y(functions, x_full)
+        self._update_axis_labels(functions)
         self._draw_origin_axes()
 
     def _prune_stale_lines(self, active: set[int]) -> None:
@@ -259,6 +356,7 @@ class GraphRenderer:
                 if i in self._glow_lines:
                     self._glow_lines[i].remove()
                     del self._glow_lines[i]
+                self._remove_curve_markers_for(i)
 
     def _autoscale_y(
         self, functions: list[MathFunction], x: np.ndarray

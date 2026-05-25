@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -26,9 +27,11 @@ from graph.animator import DrawAnimator
 from graph.canvas import MplCanvas, create_toolbar
 from ui.side_panel import SidePanel
 from ui.styles import DARK_THEME
+from ui.value_table_widget import ValueTableWidget
 from utils.export import export_figure_png
 from utils.json_io import export_functions, import_functions
 from utils.math_helpers import format_roots, intersections_text
+from utils.value_table import build_value_table, table_to_csv
 
 # Matplotlib LaTeX formula widget
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FormulaCanvas
@@ -78,6 +81,7 @@ class MainWindow(QMainWindow):
         self._live_timer.setSingleShot(True)
         self._live_timer.setInterval(80)
         self._live_timer.timeout.connect(self._plot)
+        self._table_csv_cache: tuple[list[str], list[list[str]]] = ([], [])
         self._build_ui()
         self._connect_signals()
         self._refresh_draft()
@@ -124,6 +128,21 @@ class MainWindow(QMainWindow):
             lbl.setWordWrap(True)
             info_layout.addWidget(lbl)
 
+        table_frame = QFrame()
+        table_frame.setStyleSheet(
+            "QFrame { background: #151b23; border-radius: 8px; border: 1px solid #2a3140; }"
+        )
+        table_layout = QVBoxLayout(table_frame)
+        table_title = QLabel("Tabla de valores")
+        table_title.setStyleSheet("font-weight: 600; color: #58a6ff; padding: 4px 0;")
+        self.value_table = ValueTableWidget()
+        self.export_csv_btn = QPushButton("Exportar tabla CSV")
+        self.export_csv_btn.setToolTip("Guardar la tabla de valores como CSV")
+        self.export_csv_btn.clicked.connect(self._export_table_csv)
+        table_layout.addWidget(table_title)
+        table_layout.addWidget(self.value_table)
+        table_layout.addWidget(self.export_csv_btn)
+
         self.canvas = MplCanvas(glow=False)
         self.toolbar = create_toolbar(self.canvas, self)
         self.progress_label = QLabel("Progreso animación: 0%")
@@ -131,6 +150,7 @@ class MainWindow(QMainWindow):
 
         right_layout.addWidget(self.formula_widget)
         right_layout.addWidget(info_frame)
+        right_layout.addWidget(table_frame)
         right_layout.addWidget(self.toolbar)
         right_layout.addWidget(self.canvas, stretch=1)
         right_layout.addWidget(self.progress_label)
@@ -162,9 +182,12 @@ class MainWindow(QMainWindow):
         self.side.import_json_clicked.connect(self._import_json)
         self.side.history_selected.connect(self._select_history)
         self.side.glow_toggled.connect(self._toggle_glow)
+        self.side.curve_points_toggled.connect(self._toggle_curve_points)
         self.side.speed_changed.connect(self.animator.set_speed)
         self.side.live_update_toggled.connect(self._on_live_toggle)
         self.side.example_load_clicked.connect(self._load_example)
+        self.side.indep_var_changed.connect(self._on_indep_var_changed)
+        self.side.table_steps_changed.connect(self._refresh_value_table)
 
     def _active_functions(self) -> list[MathFunction]:
         """Functions on the graph; preview draft when the list is empty."""
@@ -175,11 +198,24 @@ class MainWindow(QMainWindow):
     def _refresh_draft(self) -> None:
         type_id = self.side.current_type_id()
         params = self.side.get_params()
-        self._draft = create_function(type_id, params)
+        self._draft = create_function(
+            type_id, params, independent_var=self.side.get_independent_var()
+        )
         self._update_info(self._draft)
 
     def _on_type_changed(self, _type_id: str) -> None:
         self._refresh_draft()
+
+    def _on_indep_var_changed(self, var: str) -> None:
+        if self._draft:
+            self._draft.set_independent_var(var)
+        if 0 <= self._selected_index < len(self._functions):
+            self._functions[self._selected_index].set_independent_var(var)
+            self._update_history_list()
+        self._update_info(self._draft)
+        if self.side.live_check.isChecked():
+            self._live_timer.start()
+        self._refresh_value_table()
 
     def _on_param_changed(self, key: str, value: float) -> None:
         if self._draft:
@@ -190,6 +226,7 @@ class MainWindow(QMainWindow):
         self._update_info(self._draft)
         if self.side.live_check.isChecked():
             self._live_timer.start()
+        self._refresh_value_table()
 
     def _on_live_toggle(self, enabled: bool) -> None:
         if enabled and self._active_functions():
@@ -213,7 +250,13 @@ class MainWindow(QMainWindow):
                     self.side.type_combo.blockSignals(False)
                     break
             self.side.param_panel.load_from_function(fn)
-            self._draft = create_function(fn.TYPE_ID, dict(fn.params), fn.meta.color)
+            self.side.load_independent_var(fn.independent_var)
+            self._draft = create_function(
+                fn.TYPE_ID,
+                dict(fn.params),
+                fn.meta.color,
+                fn.independent_var,
+            )
         else:
             self._refresh_draft()
         self._plot()
@@ -223,7 +266,9 @@ class MainWindow(QMainWindow):
         if self._draft:
             self._functions.append(self._draft)
             self._draft = create_function(
-                self.side.current_type_id(), self.side.get_params()
+                self.side.current_type_id(),
+                self.side.get_params(),
+                independent_var=self.side.get_independent_var(),
             )
             self._selected_index = len(self._functions) - 1
             self._update_history_list(select=self._selected_index)
@@ -249,6 +294,7 @@ class MainWindow(QMainWindow):
                     self.side.type_combo.blockSignals(False)
                     break
             self.side.param_panel.load_from_function(fn)
+            self.side.load_independent_var(fn.independent_var)
             self._update_info(fn)
 
     def _update_history_list(self, select: int = -1) -> None:
@@ -261,7 +307,9 @@ class MainWindow(QMainWindow):
         if fn is None:
             return
         self.formula_widget.set_latex(fn.formula_latex())
-        self.info_domain.setText(f"Dominio: {fn.domain_description()}")
+        self.info_domain.setText(
+            f"Variable: {fn.independent_var}  |  Dominio: {fn.domain_description()}"
+        )
         self.info_range.setText(f"Rango: {fn.range_description()}")
         self.info_roots.setText(f"Raíces: {format_roots(fn.roots())}")
         v = fn.vertex()
@@ -279,12 +327,27 @@ class MainWindow(QMainWindow):
             )
         else:
             self.info_intersections.setText("Intersecciones: —")
+        self._refresh_value_table()
+
+    def _refresh_value_table(self) -> None:
+        funcs = self._active_functions()
+        gr = self.canvas.graph_renderer
+        headers, rows = build_value_table(
+            funcs,
+            gr.x_min,
+            gr.x_max,
+            self.side.table_steps(),
+        )
+        self.value_table.populate(headers, rows)
+        self._table_csv_cache = (headers, rows)
 
     def _plot(self) -> None:
         self.animator.stop()
         funcs = self._active_functions()
-        self.canvas.graph_renderer.glow = self.side.glow_check.isChecked()
-        self.canvas.graph_renderer.draw_full(funcs)
+        gr = self.canvas.graph_renderer
+        gr.glow = self.side.glow_check.isChecked()
+        gr.show_curve_points = self.side.curve_points_check.isChecked()
+        gr.draw_full(funcs)
         self.canvas.draw_idle()
         if self._functions:
             idx = self._selected_index if 0 <= self._selected_index < len(self._functions) else -1
@@ -318,6 +381,26 @@ class MainWindow(QMainWindow):
     def _toggle_glow(self, enabled: bool) -> None:
         self.canvas.graph_renderer.glow = enabled
         self._plot()
+
+    def _toggle_curve_points(self, enabled: bool) -> None:
+        self.canvas.graph_renderer.show_curve_points = enabled
+        self._plot()
+
+    def _export_table_csv(self) -> None:
+        headers, rows = self._table_csv_cache
+        if not headers:
+            QMessageBox.information(
+                self, "Tabla", "No hay datos en la tabla para exportar."
+            )
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar tabla CSV", "tabla_valores.csv", "CSV (*.csv)"
+        )
+        if path:
+            from pathlib import Path
+
+            Path(path).write_text(table_to_csv(headers, rows), encoding="utf-8")
+            QMessageBox.information(self, "Exportar", f"Tabla guardada en:\n{path}")
 
     def _export_png(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
